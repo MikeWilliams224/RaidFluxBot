@@ -1,0 +1,26 @@
+# RaidFlux Bot (Telegram-only) — Full Version
+
+Features:
+- Multi-project support (CA, website, telegram, twitter link fields)
+- Raid/shill message generator (text + image)
+- Proof submission & admin approval workflow
+- Leaderboard, export proofs
+- Admin panel (add/edit projects, templates, settings)
+- Auto-pin project info and /info command
+- Scheduled raids (basic)
+- Anti-spam / rate limits
+
+## Quick start (Render)
+1. Fork this repo.
+2. Create `.env` from `.env.example` and fill TELEGRAM_TOKEN and ADMIN_IDS.
+3. On Render: New → Web Service → Connect repo → set env vars:
+   - TELEGRAM_TOKEN
+   - ADMIN_IDS
+4. Deploy. Render uses Procfile to run `python -u src/bot.py`.
+
+## Important security
+- NEVER commit `.env` to GitHub.
+- If token leaks, regenerate it in @BotFather.
+
+## Commands
+See `/help` in bot for full list.
