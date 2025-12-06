@@ -1,0 +1,39 @@
+from telegram import Update
+from telegram.ext import ContextTypes
+from .storage import load_proofs, save_proofs, load_projects
+from .utils import now_ts
+
+async def submit_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Accept image/doc; caption should include project id
+    caption = (update.message.caption or "") + " " + (update.message.text or "")
+    projects = load_projects()
+    found = None
+    for pid in projects:
+        if pid.lower() in caption.lower():
+            found = pid
+            break
+    if not found:
+        await update.message.reply_text("Could not detect project in caption. Use /submitproof <project> and attach image.")
+        return
+    file_id = None
+    if update.message.photo:
+        file_id = update.message.photo[-1].file_id
+    elif update.message.document:
+        file_id = update.message.document.file_id
+    else:
+        await update.message.reply_text("Please attach image or document.")
+        return
+    proofs = load_proofs()
+    pid_num = len(proofs) + 1
+    proof_obj = {
+        "id": pid_num,
+        "project": found,
+        "user_id": update.effective_user.id,
+        "username": update.effective_user.username or update.effective_user.first_name,
+        "file_id": file_id,
+        "ts": now_ts(),
+        "approved": False
+    }
+    proofs.append(proof_obj)
+    save_proofs(proofs)
+    await update.message.reply_text(f"Proof received (id: {pid_num}). Admins will review.")
