@@ -1,0 +1,76 @@
+from telegram import Update
+from telegram.ext import ContextTypes, InputMediaPhoto
+from .storage import load_proofs, save_proofs, load_projects, save_projects
+from .config import ADMIN_IDS
+from .utils import ts_to_iso
+import io
+import zipfile
+
+def is_admin(uid):
+    return uid in ADMIN_IDS
+
+async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        return await update.message.reply_text("Unauthorized.")
+    proofs = load_proofs()
+    pending = [p for p in proofs if not p.get("approved")]
+    if not pending:
+        return await update.message.reply_text("No pending proofs.")
+    lines = [f"ID:{p['id']} | Project:{p['project']} | User:{p['username']} | ts:{ts_to_iso(p['ts'])}" for p in pending]
+    await update.message.reply_text("\n".join(lines))
+
+async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        return await update.message.reply_text("Unauthorized.")
+    args = context.args
+    if not args:
+        return await update.message.reply_text("Usage: /approve <proof_id>")
+    pid = int(args[0])
+    proofs = load_proofs()
+    for p in proofs:
+        if p["id"] == pid:
+            p["approved"] = True
+            save_proofs(proofs)
+            # award points
+            projects = load_projects()
+            pr = projects.get(p["project"])
+            pts = pr.get("points_per_proof", 10)
+            lb = pr.setdefault("leaderboard", {})
+            lb[str(p["user_id"])] = lb.get(str(p["user_id"]), 0) + pts
+            save_projects(projects)
+            try:
+                await update.bot.send_message(chat_id=p["user_id"], text=f"Your proof {pid} was approved. +{pts} pts awarded.")
+            except Exception:
+                pass
+            await update.message.reply_text(f"Proof {pid} approved.")
+            return
+    await update.message.reply_text("Proof not found.")
+
+async def cmd_export_proofs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        return await update.message.reply_text("Unauthorized.")
+    args = context.args
+    if not args:
+        return await update.message.reply_text("Usage: /export_proofs <project>")
+    proj = args[0]
+    proofs = load_proofs()
+    approved = [p for p in proofs if p["project"] == proj and p.get("approved")]
+    if not approved:
+        return await update.message.reply_text("No approved proofs for this project.")
+    bio = io.BytesIO()
+    z = zipfile.ZipFile(bio, mode='w')
+    for p in approved:
+        try:
+            f = await update.bot.get_file(p['file_id'])
+            fh = io.BytesIO()
+            await f.download_to_memory(out=fh)
+            fh.seek(0)
+            z.writestr(f"proof_{p['id']}_{p['username']}.jpg", fh.read())
+        except Exception:
+            continue
+    z.close()
+    bio.seek(0)
+    await update.message.reply_document(document=bio, filename=f"{proj}_proofs.zip")
