@@ -1,0 +1,46 @@
+import logging
+import asyncio
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+from .config import TELEGRAM_TOKEN, ENABLE_AUTOWELCOME, DEFAULT_PROJECT
+from .commands import (
+    cmd_start, cmd_help, cmd_addproject, cmd_setinfo, cmd_settemplate,
+    cmd_info, cmd_templates, cmd_raid
+)
+from .raid import submit_proof
+from .admin import cmd_pending, cmd_approve, cmd_export_proofs
+from .storage import load_projects
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def register_handlers(app):
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("addproject", cmd_addproject))
+    app.add_handler(CommandHandler("setinfo", cmd_setinfo))
+    app.add_handler(CommandHandler("settemplate", cmd_settemplate))
+    app.add_handler(CommandHandler("info", cmd_info))
+    app.add_handler(CommandHandler("templates", cmd_templates))
+    app.add_handler(CommandHandler("raid", cmd_raid))
+    app.add_handler(CommandHandler("pending", cmd_pending))
+    app.add_handler(CommandHandler("approve", cmd_approve))
+    app.add_handler(CommandHandler("export_proofs", cmd_export_proofs))
+
+    # proof: photo or document
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, submit_proof))
+
+async def main():
+    if not TELEGRAM_TOKEN:
+        logger.error("TELEGRAM_TOKEN not set. Please set it in environment.")
+        return
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    register_handlers(app)
+
+    logger.info("Starting RaidFlux Bot...")
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    await app.updater.idle()
+
+if __name__ == "__main__":
+    asyncio.run(main())
