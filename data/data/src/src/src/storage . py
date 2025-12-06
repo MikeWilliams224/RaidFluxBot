@@ -1,0 +1,35 @@
+import json
+from pathlib import Path
+from typing import Any
+from .config import PROJECTS_FILE, PROOFS_FILE, TEMPLATES_FILE
+
+def _ensure(path: Path, default: Any):
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(default, indent=2))
+        return default
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return default
+
+def _save(path: Path, data: Any):
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+
+def load_projects():
+    return _ensure(PROJECTS_FILE, {})
+
+def save_projects(data):
+    _save(PROJECTS_FILE, data)
+
+def load_proofs():
+    return _ensure(PROOFS_FILE, [])
+
+def save_proofs(data):
+    _save(PROOFS_FILE, data)
+
+def load_templates():
+    return _ensure(TEMPLATES_FILE, {})
+
+def save_templates(data):
+    _save(TEMPLATES_FILE, data)
