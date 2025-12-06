@@ -1,0 +1,142 @@
+from telegram import Update
+from telegram.ext import ContextTypes
+from .storage import load_projects, save_projects, load_templates, save_templates
+from .config import ADMIN_IDS, DEFAULT_PROJECT, ENABLE_AUTOWELCOME
+from .utils import now_ts, ts_to_iso
+
+def is_admin(user_id: int):
+    return user_id in ADMIN_IDS
+
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("👋 Welcome to RaidFlux. Use /help to see commands.")
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "/info <project> — show project info\n"
+        "/templates <project> — show templates\n"
+        "/raid <project> — start raid flow\n\n"
+        "Admin commands:\n"
+        "/addproject <id> | <name>\n"
+        "/setinfo <project> | <ca> | <website> | <telegram> | <twitter> | <notes> | <auto_pin:0|1>\n"
+        "/settemplate <project> | <template text>\n"
+        "/pending — list pending proofs\n"
+        "/approve <proof_id> — approve proof\n"
+        "/export_proofs <project> — export approved proofs\n"
+    )
+    await update.message.reply_text(text)
+
+# Admin: add project
+async def cmd_addproject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        return await update.message.reply_text("Unauthorized.")
+    payload = " ".join(context.args) or ""
+    parts = [p.strip() for p in payload.split("|")]
+    if not parts or not parts[0]:
+        return await update.message.reply_text("Usage: /addproject <id> | <name>")
+    proj_id = parts[0]
+    name = parts[1] if len(parts) > 1 else proj_id
+    projects = load_projects()
+    if proj_id in projects:
+        return await update.message.reply_text("Project exists.")
+    projects[proj_id] = {
+        "id": proj_id,
+        "name": name,
+        "ca": "",
+        "website": "",
+        "telegram": "",
+        "twitter": "",
+        "notes": "",
+        "auto_pin": False,
+        "pinned_message_id": None,
+        "templates": [],
+        "leaderboard": {},
+        "points_per_proof": 10,
+        "schedule": []
+    }
+    save_projects(projects)
+    await update.message.reply_text(f"Project {proj_id} added.")
+
+# Admin: setinfo
+async def cmd_setinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        return await update.message.reply_text("Unauthorized.")
+    payload = update.message.text.partition(" ")[2]
+    parts = [p.strip() for p in payload.split("|")]
+    if len(parts) < 2:
+        return await update.message.reply_text("Usage: /setinfo <project> | <ca> | <website> | <telegram> | <twitter> | <notes> | <auto_pin:0|1>")
+    proj = parts[0]
+    projects = load_projects()
+    if proj not in projects:
+        return await update.message.reply_text("Project not found.")
+    fields = ["ca","website","telegram","twitter","notes","auto_pin"]
+    for i,field in enumerate(fields, start=1):
+        if i < len(parts):
+            val = parts[i]
+            if field == "auto_pin":
+                projects[proj][field] = (val == "1" or val.lower()=="true")
+            else:
+                projects[proj][field] = val
+    save_projects(projects)
+    await update.message.reply_text(f"Project {proj} info updated.")
+
+# Admin: settemplate
+async def cmd_settemplate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        return await update.message.reply_text("Unauthorized.")
+    payload = update.message.text.partition(" ")[2]
+    parts = [p.strip() for p in payload.split("|")]
+    if len(parts) < 2:
+        return await update.message.reply_text("Usage: /settemplate <project> | <template text>")
+    proj = parts[0]
+    template = parts[1]
+    projects = load_projects()
+    if proj not in projects:
+        return await update.message.reply_text("Project not found.")
+    projects[proj].setdefault("templates",[]).append(template)
+    save_projects(projects)
+    await update.message.reply_text("Template added.")
+
+# /info
+async def cmd_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    proj = context.args[0] if context.args else DEFAULT_PROJECT
+    projects = load_projects()
+    if proj not in projects:
+        return await update.message.reply_text("Project not found.")
+    p = projects[proj]
+    text = f"*{p.get('name','')}*\n"
+    if p.get("ca"): text += f"CA: `{p['ca']}`\n"
+    if p.get("website"): text += f"Website: {p['website']}\n"
+    if p.get("telegram"): text += f"Telegram: {p['telegram']}\n"
+    if p.get("twitter"): text += f"Twitter: {p['twitter']}\n"
+    if p.get("notes"): text += f"Notes: {p['notes']}\n"
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+# /templates
+async def cmd_templates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    proj = context.args[0] if context.args else DEFAULT_PROJECT
+    projects = load_projects()
+    if proj not in projects:
+        return await update.message.reply_text("Project not found.")
+    t = projects[proj].get("templates", [])
+    if not t:
+        return await update.message.reply_text("No templates configured.")
+    text = "\n\n".join(f"{i+1}. {s}" for i,s in enumerate(t))
+    await update.message.reply_text(text)
+
+# /raid
+async def cmd_raid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    proj = context.args[0] if context.args else DEFAULT_PROJECT
+    projects = load_projects()
+    if proj not in projects:
+        return await update.message.reply_text("Project not found.")
+    templates = projects[proj].get("templates", [])
+    if not templates:
+        return await update.message.reply_text("No templates set.")
+    # send templates (up to 8)
+    text = f"🔥 RAID for *{projects[proj]['name']}*\nChoose a template and copy it to post:\n\n"
+    text += "\n\n".join(f"{i+1}. {s}" for i,s in enumerate(templates[:8]))
+    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text("To participate: copy a template, post on target, then send proof (image) with caption including project id.")
