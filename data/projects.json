@@ -1,0 +1,21 @@
+{
+  "RaidFlux": {
+    "id": "RaidFlux",
+    "name": "RaidFlux",
+    "ca": "",
+    "website": "",
+    "telegram": "",
+    "twitter": "",
+    "notes": "",
+    "auto_pin": false,
+    "pinned_message_id": null,
+    "templates": [
+      "🚀 {token} is live — join: {link}",
+      "No cap — {token} heating up 🔥 Join: {link}",
+      "This one go lunar 🌕 — hop in: {link}"
+    ],
+    "leaderboard": {},
+    "points_per_proof": 10,
+    "schedule": []
+  }
+}
