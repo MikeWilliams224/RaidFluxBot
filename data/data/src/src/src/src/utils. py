@@ -1,0 +1,8 @@
+import time
+from datetime import datetime
+
+def now_ts():
+    return int(time.time())
+
+def ts_to_iso(ts):
+    return datetime.utcfromtimestamp(ts).isoformat() + "Z"
